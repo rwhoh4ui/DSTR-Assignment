@@ -1,125 +1,464 @@
-section .data
-intro_msg db 'Welcome to Student Grade System',0xA,0
-intro_len equ $ - intro_msg
+section .data ;initial value
+welcome_msg db 'Welcome to Student Grade System',0xA,0
+welcome_len equ $ - welcome_msg
 
 ask_student_name db 'Please Enter the Student Name: ',0
 ask_student_name_len equ $ - ask_student_name
 
-ask_num_of_subject db 'How Many Subjects do you want to calculate?'
-ask_num_of_subject_len eqy $ - ask_num_of_subject
+ask_num_of_subject db 'How Many Subjects do you want to calculate? ',0xA,0
+ask_num_of_subject_len equ $ - ask_num_of_subject
 
 ask_score db 'Please enter the score: ',0
-ask_score_len equ $ -ask_score
+ask_score_len equ $ - ask_score
 
 error_msg db 'Invalid input! Please Enter again.',0xA,0
 error_msg_len equ $ - error_msg
 
+student_name db 'Student Name: ',0
+student_name_len equ $ - student_name
+
 result_msg db 'Total Score: ',0
 result_msg_len equ $ - result_msg
 
-newline db 0xA
+average_msg db 'Avarage Score: ',0
+average_msg_len equ $ - average_msg
 
-section .bss
+grade_msg db 'Final Grade: ',0
+grade_msg_len equ $ - grade_msg
+
+passfail_msg db 'Result: ',0
+passfail_msg_len equ $ - passfail_msg
+
+grade_A db 'A',0xA
+grade_B db 'B',0xA
+grade_C db 'C',0xA
+grade_F db 'F',0xA
+
+pass_msg db 'Pass',0xA
+pass_msg_len equ $ - pass_msg
+
+fail_msg db 'Fail',0xA
+fail_msg_len equ $ - fail_msg
+
+
+
+section .bss ;no initial value
 StudentName resb 20
 NumberOfSubject resb 2
 Score resb 4
-TotalScore resb 4
+TotalScore resw 1 ;1w = 0~65535
+ResultBuffer resb 6
+OriginalSubject resb 1
+FinalGrade resb 1
+AverageScore resb 1
+AverageBuffer resb 4
+
 
 
 section .text
     global _start
 
 _start:
+    ;display welcome message
     mov eax,4
     mov ebx,1
-    mov ecx,intro_msg
-    mov edx,intro_len
+    mov ecx,welcome_msg
+    mov edx,welcome_len
     int 0x80
-    
-    ;ask/read name and num of subject
+
+    ; ask/read student name
     mov eax,4
     mov ebx,1
     mov ecx,ask_student_name
     mov edx,ask_student_name_len
     int 0x80
-    
+
     mov eax,3
     mov ebx,0
+    mov ecx,StudentName
+    mov edx,20
+    int 0x80
+
+ask_subject:
+    ;ask/read number of subjects
+    mov eax,4
+    mov ebx,1
+    mov ecx,ask_num_of_subject
+    mov edx,ask_num_of_subject_len
+    int 0x80
+
+    mov eax,3
+    mov ebx,0
+    mov ecx,NumberOfSubject
+    mov edx,2
+    int 0x80
+
+    ;convert ascii to number
+    mov al,[NumberOfSubject]
+
+    ;check if input is less than 0
+    cmp al,'0'
+    jl subject_error
+
+    ;check if input is greater than 9
+    cmp al,'9'
+    jg subject_error
+
+    sub al,'0'
+
+    ;check if input is 0
+    cmp al,0
+    je subject_error
+    
+    ;store subject number
+    mov [NumberOfSubject],al
+    mov [OriginalSubject],al
+    jmp subject_ok
+
+subject_error:
+    mov eax,4
+    mov ebx,1
+    mov ecx,error_msg
+    mov edx,error_msg_len
+    int 0x80
+    jmp ask_subject
+
+subject_ok:
+    ;initialize total score
+    mov word [TotalScore],0
+
+loop_start:
+    cmp byte [NumberOfSubject],0
+    je display_score
+
+ask_score_loop:
+    ;ask/read score
+    mov eax,4
+    mov ebx,1
+    mov ecx,ask_score
+    mov edx,ask_score_len
+    int 0x80
+
+    mov eax,3
+    mov ebx,0
+    mov ecx,Score
+    mov edx,5
+    int 0x80
+
+    mov al,[Score]
+
+    ; check negative input
+    cmp al,'-'
+    je score_error
+
+    ;check first character is digit
+    cmp al,'0'
+    jl score_error
+    cmp al,'9'
+    jg score_error
+    
+    ;convert ascii to number
+    sub al,'0'
+    mov bl,al ;bl=temporary store
+
+    mov al,[Score+1]
+    cmp al,0xA 
+    je score_ok
+
+    ;second character is digit
+    cmp al,'0'
+    jl score_error
+    cmp al,'9'
+    jg score_error
+
+    sub al,'0'
+    mov cl,al ;cl = temporary store
+
+    ;calculate fisrt and second digits
+    mov al,bl
+    mov dl,10
+    mul dl
+    add al,cl
+    mov bl,al
+
+    mov al,[Score+2]
+    cmp al,0xA 
+    je score_ok
+
+    ;third character is digit
+    cmp al,'0'
+    jl score_error
+    cmp al,'9'
+    jg score_error
+
+    sub al,'0'
+    mov cl,al
+
+    ;caluculate all digits
+    mov al,bl
+    mov dl,10
+    mul dl
+    add al,cl
+    mov bl,al
+
+    mov al,[Score+3]
+    cmp al,0xA
+    jne score_error
+
+    ;score <= 100
+    cmp bl,100
+    jg score_error
+
+    jmp score_ok
+
+score_error:
+    mov eax,4
+    mov ebx,1
+    mov ecx,error_msg
+    mov edx,error_msg_len
+    int 0x80
+    jmp ask_score_loop
+
+score_ok:
+    ;add score to total score
+    movzx ax,bl ;8bit to 16bit
+    add [TotalScore],ax
+
+    ;decrease subject count
+    sub byte [NumberOfSubject],1
+
+    jmp loop_start
+
+display_score:
+    ; display name and result
+    mov eax,4
+    mov ebx,1
+    mov ecx,student_name
+    mov edx,student_name_len
+    int 0x80
+    
+    mov eax,4
+    mov ebx,1
     mov ecx,StudentName
     mov edx,20
     int 0x80
     
     mov eax,4
     mov ebx,1
-    mov ecx,ask_num_of_subject
-    mov edx,ask_num_of_subject_len
+    mov ecx,result_msg
+    mov edx,result_msg_len
     int 0x80
+
+    ;convert TotalScore number to ascii
+    mov ax,[TotalScore]
+    mov edi,ResultBuffer + 5 ;point last byte
+    mov byte [edi],0xA
+    dec edi
+
+    cmp ax,0
+    jne convert_total_loop
     
-    mov eax,3
-    mov ebx,0
-    mov ecx,NumberOfSubject
+    ;if total score is 0
+    mov byte [edi],'0'
+    mov ecx,edi
+    mov edx,2
+    jmp print_total
+
+convert_total_loop:
+    mov dx,0
+    mov bx,10
+    div bx ;divide 10
+    add dl,'0'
+    mov [edi],dl ;store reminder right to left
+    dec edi
+    cmp ax,0
+    jne convert_total_loop
+
+    inc edi
+    mov ecx,edi
+
+    mov edx,ResultBuffer + 6
+    sub edx,ecx
+
+print_total:
+    mov eax,4
+    mov ebx,1
+    int 0x80
+    jmp final_grade
+    
+final_grade:
+    ;calculate average score
+    mov ax,[TotalScore]
+    mov bl,[OriginalSubject]
+    div bl ;average = total score/number od subject
+
+    mov [AverageScore],al
+
+    ;display average 
+    mov eax,4
+    mov ebx,1
+    mov ecx,average_msg
+    mov edx,average_msg_len
+    int 0x80
+
+    ;convert average number to ascii
+    movzx ax,byte [AverageScore]
+    mov edi,AverageBuffer + 3 ;4Byte, max 3digitd(100)
+    mov byte [edi],0xA
+    dec edi
+    
+    ;check if average is 0
+    cmp ax,0
+    jne convert_average_loop
+
+    mov byte [edi],'0'
+    mov ecx,edi
+    mov edx,2
+    jmp print_average
+
+convert_average_loop:
+    mov dx,0 ;same as total score loop
+    mov bx,10
+    div bx
+    add dl,'0'
+    mov [edi],dl
+    dec edi
+    cmp ax,0
+    jne convert_average_loop
+
+    inc edi
+    mov ecx,edi
+
+    mov edx,AverageBuffer + 4
+    sub edx,ecx
+
+print_average:
+    mov eax,4
+    mov ebx,1
+    int 0x80
+
+    mov al,[AverageScore]
+
+    cmp al,80
+    jge set_grade_A
+
+    cmp al,60
+    jge set_grade_B
+
+    cmp al,40
+    jge set_grade_C
+
+    jmp set_grade_F
+
+
+set_grade_A:
+    mov byte [FinalGrade],'A'
+
+    mov eax,4
+    mov ebx,1
+    mov ecx,grade_msg
+    mov edx,grade_msg_len
+    int 0x80
+
+    mov eax,4
+    mov ebx,1
+    mov ecx,grade_A
     mov edx,2
     int 0x80
+
+    jmp pass_fail
+
+
+set_grade_B:
+    mov byte [FinalGrade],'B'
+
+    mov eax,4
+    mov ebx,1
+    mov ecx,grade_msg
+    mov edx,grade_msg_len
+    int 0x80
+
+    mov eax,4
+    mov ebx,1
+    mov ecx,grade_B
+    mov edx,2
+    int 0x80
+
+    jmp pass_fail
+
+
+set_grade_C:
+    mov byte [FinalGrade],'C'
+
+    mov eax,4
+    mov ebx,1
+    mov ecx,grade_msg
+    mov edx,grade_msg_len
+    int 0x80
+
+    mov eax,4
+    mov ebx,1
+    mov ecx,grade_C
+    mov edx,2
+    int 0x80
+
+    jmp pass_fail
+
+
+set_grade_F:
+    mov byte [FinalGrade],'F'
+
+    mov eax,4
+    mov ebx,1
+    mov ecx,grade_msg
+    mov edx,grade_msg_len
+    int 0x80
+
+    mov eax,4
+    mov ebx,1
+    mov ecx,grade_F
+    mov edx,2
+    int 0x80
+
+    jmp pass_fail
     
-    
-    ;convert ascii to number
-    mov al,[NumberOfSubject]
-    sub al,'0'
-    mov [NumberOfSubject],al
-    
-    ;initialize total score
-    mov byte[TotalScore],0
-    
-    ;ask score
-loop_start:
-cmp byte[NumberOfSubject],0
-je display_score
+pass_fail:
+    mov eax,4
+    mov ebx,1
+    mov ecx,passfail_msg
+    mov edx,passfail_msg_len
+    int 0x80
 
-mov eax,4
-mov ebx,1
-mov ecx,ask_score
-mov edx,ask_score_len
-int 0x80
+    mov al,[FinalGrade]
 
-mov eax,3
-mov ebx,0
-mov ecx,Score
-mov edx,4
-int 0x80
+    cmp al,'F'
+    je display_fail
 
-;convert ascii to number
-mov al,[Score]
-sub al,'0'
-
-add [TotalScore],al
-
-;decrease sbject count
-sub byte [NumberOfSubject],1
-
-jmp loop_start
+    ;A, B, C
+    jmp display_pass
 
 
-;display score
-display_score:
+display_pass:
+    mov eax,4
+    mov ebx,1
+    mov ecx,pass_msg
+    mov edx,pass_msg_len
+    int 0x80
 
-mov eax,4
-mov ebx,1
-mov ecx,result_msg
-mov edx,result_msg_len
-int 0x80
+    jmp exit_program
 
-;convert number (total score) to ascii
-mov al,[TotalScore]
-add al,'0'
-mov [TotalScore],al
 
-mov eax,4
-mov ebx,1
-mov ecx,TotalScore
-mov edx,1
-int 0x80
-    
-    ;exit
+display_fail:
+    mov eax,4
+    mov ebx,1
+    mov ecx,fail_msg
+    mov edx,fail_msg_len
+    int 0x80
+
+    jmp exit_program
+
+
+exit_program:
     mov eax,1
     mov ebx,0
     int 0x80
